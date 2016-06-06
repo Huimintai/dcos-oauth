@@ -8,13 +8,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dcos/dcos-oauth/common"
 	"golang.org/x/net/context"
 
-	"github.com/coreos/go-oidc/jose"
-	"github.com/coreos/go-oidc/oidc"
-	"github.com/samuel/go-zookeeper/zk"
-
-	"github.com/dcos/dcos-oauth/common"
+	"git.openstack.org/openstack/golang-client.git/openstack"
 )
 
 type loginRequest struct {
@@ -29,6 +26,8 @@ type loginResponse struct {
 	Token string `json:"token,omitempty"`
 }
 
+var url string
+
 func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	var lr loginRequest
 	err := json.NewDecoder(r.Body).Decode(&lr)
@@ -37,90 +36,24 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 		return common.NewHttpError("JSON decode error", http.StatusBadRequest)
 	}
 
-	issuerURL, _ := ctx.Value("issuer-url").(string)
-	provCfg, err := oidc.FetchProviderConfig(httpClient, issuerURL)
+	// Authenticate with just a username and password. The returned token is
+	// unscoped to a tenant.
+
+	url = "http://9.21.60.45:5000/v2.0"
+	creds := openstack.AuthOpts{
+		AuthUrl:  url,
+		Username: lr.Uid,
+		Password: lr.Password,
+	}
+	auth, err := openstack.DoAuthRequest(creds)
 	if err != nil {
-		log.Printf("FetchProviderConfig: %v", err)
-		return common.NewHttpError("[OIDC] Fetch provider config error", http.StatusInternalServerError)
+		fmt.Println("Error authenticating username/password:", err)
+		return nil
 	}
-
-	clientID, _ := ctx.Value("client-id").(string)
-
-	cliCfg := oidc.ClientConfig{
-		HTTPClient:     httpClient,
-		ProviderConfig: provCfg,
-		Credentials: oidc.ClientCredentials{
-			ID: clientID,
-		},
+	if !auth.GetExpiration().After(time.Now()) {
+		fmt.Println("There was an error. The auth token has an invalid expiration.")
+		return nil
 	}
-	oidcCli, err := oidc.NewClient(cliCfg)
-	if err != nil {
-		log.Printf("oidc.NewClient: %v", err)
-		return common.NewHttpError("[OIDC] Client creation error", http.StatusInternalServerError)
-	}
-
-	token, err := jose.ParseJWT(lr.Token)
-	if err != nil {
-		log.Printf("ParseJWT: %v", err)
-		return common.NewHttpError("JWT parsing failed", http.StatusBadRequest)
-	}
-
-	err = oidcCli.VerifyJWT(token)
-	if err != nil {
-		log.Printf("VerifyJWT: %v", err)
-		return common.NewHttpError("JWT verification failed", http.StatusUnauthorized)
-	}
-
-	claims, err := token.Claims()
-	if err != nil {
-		log.Printf("Claims: %v", err)
-		return common.NewHttpError("invalid claims", http.StatusBadRequest)
-	}
-
-	// check for Auth0 email verification
-	if verified, ok := claims["email_verified"]; ok {
-		if b, ok := verified.(bool); ok && !b {
-			log.Printf("email not verified")
-			return common.NewHttpError("email not verified", http.StatusBadRequest)
-		}
-	}
-
-	uid, ok, err := claims.StringClaim("email")
-	if !ok || err != nil {
-		return common.NewHttpError("invalid email claim", http.StatusBadRequest)
-	}
-
-	c := ctx.Value("zk").(*zk.Conn)
-
-	users, _, err := c.Children("/dcos/users")
-	if err != nil && err != zk.ErrNoNode {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
-	}
-
-	userPath := fmt.Sprintf("/dcos/users/%s", uid)
-	if len(users) == 0 {
-		// create first user
-		log.Printf("creating first user %v", uid)
-		err = common.CreateParents(c, userPath, []byte(uid))
-		if err != nil {
-			return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
-		}
-	}
-
-	exists, _, err := c.Exists(userPath)
-	if err != nil || !exists {
-		return common.NewHttpError("User unauthorized", http.StatusUnauthorized)
-	}
-
-	claims.Add("uid", uid)
-
-	secretKey, _ := ctx.Value("secret-key").([]byte)
-
-	clusterToken, err := jose.NewSignedJWT(claims, jose.NewSignerHMAC("secret", secretKey))
-	if err != nil {
-		return common.NewHttpError("JWT creation error", http.StatusInternalServerError)
-	}
-	encodedClusterToken := clusterToken.Encode()
 
 	const cookieMaxAge = 388800
 	// required for IE 6, 7 and 8
@@ -128,7 +61,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 
 	authCookie := &http.Cookie{
 		Name:     "dcos-acs-auth-cookie",
-		Value:    encodedClusterToken,
+		Value:    auth.GetToken(),
 		Path:     "/",
 		HttpOnly: true,
 		Expires:  expiresTime,
@@ -137,8 +70,8 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	http.SetCookie(w, authCookie)
 
 	user := User{
-		Uid:         uid,
-		Description: uid,
+		Uid:         lr.Uid,
+		Description: lr.Uid,
 		IsRemote:    false,
 	}
 	userBytes, err := json.Marshal(user)
@@ -155,11 +88,10 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	}
 	http.SetCookie(w, infoCookie)
 
-	json.NewEncoder(w).Encode(loginResponse{Token: encodedClusterToken})
+	json.NewEncoder(w).Encode(loginResponse{Token: auth.GetToken()})
 
 	return nil
 }
-
 func handleLogout(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// required for IE 6, 7 and 8
 	expiresTime := time.Unix(1, 0)
