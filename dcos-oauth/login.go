@@ -11,7 +11,8 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 	"golang.org/x/net/context"
 
-	"git.openstack.org/openstack/golang-client.git/openstack"
+	"github.com/qiujian16/golang-client/identity/v3"
+	"github.com/coreos/go-oidc/jose"
 )
 
 type loginRequest struct {
@@ -39,13 +40,14 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	// Authenticate with just a username and password. The returned token is
 	// unscoped to a tenant.
 
-	url = "http://9.21.60.45:5000/v2.0"
-	creds := openstack.AuthOpts{
+	url = "http://9.21.62.241:5000/v3"
+	creds := keystonev3.AuthOpts{
 		AuthUrl:  url,
 		Username: lr.Uid,
 		Password: lr.Password,
+		Project:  lr.Uid,
 	}
-	auth, err := openstack.DoAuthRequest(creds)
+	auth, token, err := keystonev3.DoAuthRequest(creds)
 	if err != nil {
 		fmt.Println("Error authenticating username/password:", err)
 		return nil
@@ -55,13 +57,23 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 		return nil
 	}
 
+	claims := jose.Claims{}
+	claims.Add("uid", lr.Uid)
+	claims.Add("token", token)
+	secretKey, _ := ctx.Value("secret-key").([]byte)
+	clusterToken, err := jose.NewSignedJWT(claims, jose.NewSignerHMAC("secret", secretKey))
+	if err != nil {
+		return common.NewHttpError("JWT creation error", http.StatusInternalServerError)
+	}
+	encodedClusterToken := clusterToken.Encode()
+
 	const cookieMaxAge = 388800
 	// required for IE 6, 7 and 8
 	expiresTime := time.Now().Add(cookieMaxAge * time.Second)
 
 	authCookie := &http.Cookie{
 		Name:     "dcos-acs-auth-cookie",
-		Value:    auth.GetToken(),
+		Value:    encodedClusterToken,
 		Path:     "/",
 		HttpOnly: true,
 		Expires:  expiresTime,
@@ -88,7 +100,7 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	}
 	http.SetCookie(w, infoCookie)
 
-	json.NewEncoder(w).Encode(loginResponse{Token: auth.GetToken()})
+	json.NewEncoder(w).Encode(loginResponse{Token: token})
 
 	return nil
 }

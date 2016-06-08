@@ -94,6 +94,10 @@
 		{
 			"ImportPath": "golang.org/x/sys/unix",
 			"Rev": "a60af9cbbc6ab800af4f2be864a31f423a0ae1f2"
+		},
+		{
+			"ImportPath": "github.com/qiujian16/golang-client",
+			"Rev": "68f25eb4fca8693c0f24b04b3547abc1f014ea2a"
 		}
 	]
 }

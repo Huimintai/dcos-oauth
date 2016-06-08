@@ -9,10 +9,12 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"github.com/samuel/go-zookeeper/zk"
 	"golang.org/x/net/context"
 
 	"github.com/dcos/dcos-oauth/common"
+
+	"github.com/qiujian16/golang-client/openstack"
+	"github.com/qiujian16/golang-client/identity/v3"
 )
 
 var httpClient = &http.Client{
@@ -36,18 +38,38 @@ type User struct {
 }
 
 func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	c := ctx.Value("zk").(common.IZk)
-	users, _, err := c.Children("/dcos/users")
-	if err != nil && err != zk.ErrNoNode {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+	url = "http://9.21.62.241:5000/v3"
+	creds := keystonev3.AuthOpts{
+		AuthUrl:  url,
+		Username: "admin",
+		Password: "admin",
+		Project:  "admin",
 	}
+	_, token, err := keystonev3.DoAuthRequest(creds)
+	if err != nil {
+		fmt.Println("Error authenticating username/password:", err)
+		return nil
+	}
+
+        sess, err := openstack.NewSession(nil, token, nil)
+	if err != nil {
+		fmt.Println("Error creating new Session:", err)
+		return nil
+	}
+
+	userService := keystonev3.Service{
+		Session: *sess,
+		Client:  *http.DefaultClient,
+		URL:     url,
+	}
+	users, err := userService.Users()
 
 	// users will be an empty list on ErrNoNode
 	var usersJson Users
 	for _, user := range users {
 		userJson := &User{
-			Uid:         user,
-			Description: user,
+			Uid:         user.Name,
+			Description: user.Name,
 			URL:         "",
 			IsRemote:    false,
 		}
@@ -62,19 +84,34 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
 	uid := mux.Vars(r)["uid"]
-	if !common.ValidateEmail(uid) {
-		return common.NewHttpError("invalid email", http.StatusInternalServerError)
+	url = "http://9.21.62.241:5000/v3"
+	creds := keystonev3.AuthOpts{
+		AuthUrl:  url,
+		Username: "admin",
+		Password: "admin",
+		Project:  "admin",
 	}
-
-	c := ctx.Value("zk").(common.IZk)
-
-	path := fmt.Sprintf("/dcos/users/%s", uid)
-	exists, _, err := c.Exists(path)
+	_, token, err := keystonev3.DoAuthRequest(creds)
 	if err != nil {
-		return common.NewHttpError("Zookeeper error", http.StatusInternalServerError)
+		fmt.Println("Error authenticating username/password:", err)
+		return nil
 	}
-	if !exists {
-		log.Printf("getUser: %v doesn't exist", path)
+
+        sess, err := openstack.NewSession(nil, token, nil)
+	if err != nil {
+		fmt.Println("Error creating new Session:", err)
+		return nil
+	}
+
+	userService := keystonev3.Service{
+		Session: *sess,
+		Client:  *http.DefaultClient,
+		URL:     url,
+	}
+	users, err := userService.GetUserByName(uid)
+
+	if len(users) <=0 {
+		log.Printf("getUser: %v doesn't exist", uid)
 		return common.NewHttpError("User Not Found", http.StatusNotFound)
 	}
 
