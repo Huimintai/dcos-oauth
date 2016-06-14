@@ -14,7 +14,7 @@ func main() {
 		Name:      "serve",
 		ShortName: "s",
 		Usage:     "Serve the API",
-		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey},
+		Flags:     []cli.Flag{common.FlAddr, common.FlZkAddr, flIssuerURL, flClientID, flSecretKeyPath, flSegmentKey, flKeyStoneURL},
 		Action:    action(serveAction),
 	}
 
@@ -27,6 +27,7 @@ func serveAction(c *cli.Context) error {
 	ctx = context.WithValue(ctx, "issuer-url", c.String("issuer-url"))
 	ctx = context.WithValue(ctx, "client-id", c.String("client-id"))
 	ctx = context.WithValue(ctx, "segment-key", c.String("segment-key"))
+	ctx = context.WithValue(ctx, "keystone-url", c.String("keystone-url"))
 
 	secretKey, err := common.ReadLine(c.String("secret-key-path"))
 	if err != nil {

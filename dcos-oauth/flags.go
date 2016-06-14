@@ -30,4 +30,10 @@ var (
 		Usage: "Segment key",
 		Value: "39uhSEOoRHMw6cMR6st9tYXDbAL3JSaP",
 	}
+	flKeyStoneURL = cli.StringFlag{
+		Name:   "keystone-url",
+		Usage:  "KeyStone URL",
+		Value:  "/var/lib/dcos/keyStoneURL",
+		EnvVar: "KEY_STONE_URL",
+	}
 )

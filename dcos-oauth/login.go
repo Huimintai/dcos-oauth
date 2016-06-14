@@ -11,8 +11,8 @@ import (
 	"github.com/dcos/dcos-oauth/common"
 	"golang.org/x/net/context"
 
-	"github.com/qiujian16/golang-client/identity/v3"
 	"github.com/coreos/go-oidc/jose"
+	"github.com/qiujian16/golang-client/identity/v3"
 )
 
 type loginRequest struct {
@@ -40,9 +40,10 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	// Authenticate with just a username and password. The returned token is
 	// unscoped to a tenant.
 
-	url = "http://9.21.62.241:5000/v3"
+	//	url = "http://9.21.62.241:5000/v3"
+	keyStoneURL, _ := ctx.Value("keyStoneURL").(string)
 	creds := keystonev3.AuthOpts{
-		AuthUrl:  url,
+		AuthUrl:  keyStoneURL,
 		Username: lr.Uid,
 		Password: lr.Password,
 		Project:  lr.Uid,
