@@ -30,10 +30,32 @@ var (
 		Usage: "Segment key",
 		Value: "39uhSEOoRHMw6cMR6st9tYXDbAL3JSaP",
 	}
+
 	flKeyStoneURL = cli.StringFlag{
 		Name:   "keystone-url",
 		Usage:  "KeyStone URL",
-		Value:  "/var/lib/dcos/keyStoneURL",
-		EnvVar: "KEY_STONE_URL",
+		Value:  "http://9.21.62.241:5000/v3",
+		EnvVar: "KEYSTONE_URL",
+	}
+
+	ksAdminUser = cli.StringFlag{
+		Name:   "ks-admin-user",
+		Usage:  "ks admin user",
+		Value:  "admin",
+		EnvVar: "ADMIN",
+	}
+
+	ksAdminPassword = cli.StringFlag{
+		Name:   "ks-admin-password",
+		Usage:  "ks admin password",
+		Value:  "admin",
+		EnvVar: "ADMIN",
+	}
+
+	ksAdminProject = cli.StringFlag{
+		Name:   "ks-admin-project",
+		Usage:  "ks admin project",
+		Value:  "admin",
+		EnvVar: "ADMIN",
 	}
 )

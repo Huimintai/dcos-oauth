@@ -13,8 +13,8 @@ import (
 
 	"github.com/dcos/dcos-oauth/common"
 
-	"github.com/qiujian16/golang-client/openstack"
 	"github.com/qiujian16/golang-client/identity/v3"
+	"github.com/qiujian16/golang-client/openstack"
 )
 
 var httpClient = &http.Client{
@@ -38,23 +38,45 @@ type User struct {
 }
 
 func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
-	url = "http://9.21.62.241:5000/v3"
+	url, err1 := ctx.Value("keystone-url").(string)
+	if err1 == false {
+		log.Printf("URL error: %v", err1)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	ksAdminUser, err2 := ctx.Value("ks-admin-user").(string)
+	if err2 == false {
+		log.Printf("Keystone admin user error: %v", err2)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	ksAdminPassword, err3 := ctx.Value("ks-admin-password").(string)
+	if err3 == false {
+		log.Printf("Keystone admin password error: %v", err3)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	ksAdminProject, err4 := ctx.Value("ks-admin-project").(string)
+	if err4 == false {
+		log.Printf("Keystone admin project error: %v", err4)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
 	creds := keystonev3.AuthOpts{
 		AuthUrl:  url,
-		Username: "admin",
-		Password: "admin",
-		Project:  "admin",
+		Username: ksAdminUser,
+		Password: ksAdminPassword,
+		Project:  ksAdminProject,
 	}
 	_, token, err := keystonev3.DoAuthRequest(creds)
 	if err != nil {
 		fmt.Println("Error authenticating username/password:", err)
-		return nil
+		return common.NewHttpError("Authenticating username/password error", http.StatusInternalServerError)
 	}
 
-        sess, err := openstack.NewSession(nil, token, nil)
+	sess, err := openstack.NewSession(nil, token, nil)
 	if err != nil {
 		fmt.Println("Error creating new Session:", err)
-		return nil
+		return common.NewHttpError("Creating new Session error", http.StatusInternalServerError)
 	}
 
 	userService := keystonev3.Service{
@@ -84,23 +106,47 @@ func getUsers(ctx context.Context, w http.ResponseWriter, r *http.Request) *comm
 func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *common.HttpError {
 	// uid is already unescaped here
 	uid := mux.Vars(r)["uid"]
-	url = "http://9.21.62.241:5000/v3"
+
+	url, err1 := ctx.Value("keystone-url").(string)
+	if err1 == false {
+		log.Printf("URL error: %v", err1)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+
+	}
+
+	ksAdminUser, err2 := ctx.Value("ks-admin-user").(string)
+	if err2 == false {
+		log.Printf("Keystone admin user error: %v", err2)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	ksAdminPassword, err3 := ctx.Value("ks-admin-password").(string)
+	if err3 == false {
+		log.Printf("Keystone admin password error: %v", err3)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
+
+	ksAdminProject, err4 := ctx.Value("ks-admin-project").(string)
+	if err4 == false {
+		log.Printf("Keystone admin project error: %v", err4)
+		return common.NewHttpError("Unauthorized", http.StatusUnauthorized)
+	}
 	creds := keystonev3.AuthOpts{
 		AuthUrl:  url,
-		Username: "admin",
-		Password: "admin",
-		Project:  "admin",
+		Username: ksAdminUser,
+		Password: ksAdminPassword,
+		Project:  ksAdminProject,
 	}
 	_, token, err := keystonev3.DoAuthRequest(creds)
 	if err != nil {
 		fmt.Println("Error authenticating username/password:", err)
-		return nil
+		return common.NewHttpError("Authenticating username/password error", http.StatusInternalServerError)
 	}
 
-        sess, err := openstack.NewSession(nil, token, nil)
+	sess, err := openstack.NewSession(nil, token, nil)
 	if err != nil {
 		fmt.Println("Error creating new Session:", err)
-		return nil
+		return common.NewHttpError("Creating new session error", http.StatusInternalServerError)
 	}
 
 	userService := keystonev3.Service{
@@ -110,7 +156,7 @@ func getUser(ctx context.Context, w http.ResponseWriter, r *http.Request) *commo
 	}
 	users, err := userService.GetUserByName(uid)
 
-	if len(users) <=0 {
+	if len(users) <= 0 {
 		log.Printf("getUser: %v doesn't exist", uid)
 		return common.NewHttpError("User Not Found", http.StatusNotFound)
 	}

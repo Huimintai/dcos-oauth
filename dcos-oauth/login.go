@@ -40,10 +40,9 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	// Authenticate with just a username and password. The returned token is
 	// unscoped to a tenant.
 
-	//	url = "http://9.21.62.241:5000/v3"
-	keyStoneURL, _ := ctx.Value("keyStoneURL").(string)
+	url, _ := ctx.Value("keystone-url").(string)
 	creds := keystonev3.AuthOpts{
-		AuthUrl:  keyStoneURL,
+		AuthUrl:  url,
 		Username: lr.Uid,
 		Password: lr.Password,
 		Project:  lr.Uid,
@@ -51,11 +50,11 @@ func handleLogin(ctx context.Context, w http.ResponseWriter, r *http.Request) *c
 	auth, token, err := keystonev3.DoAuthRequest(creds)
 	if err != nil {
 		fmt.Println("Error authenticating username/password:", err)
-		return nil
+		return common.NewHttpError("Authenticating username/password error", http.StatusUnauthorized)
 	}
 	if !auth.GetExpiration().After(time.Now()) {
 		fmt.Println("There was an error. The auth token has an invalid expiration.")
-		return nil
+		return common.NewHttpError("Auth token expiration error", http.StatusInternalServerError)
 	}
 
 	claims := jose.Claims{}
